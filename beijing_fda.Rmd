@@ -1,0 +1,699 @@
+---
+title: "beijing"
+author: "Yichu Chen"
+date: "3/9/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(ggplot2)
+library(fdapace)
+library(fdaconcur)
+library(zoo)
+library(plotly)
+library(plot3D)
+library(lubridate)
+```
+
+```{r}
+beijing <- read.csv("~/Desktop/Winter 2023 GRAD/BST223/weather/beijing.csv", stringsAsFactors=TRUE)
+beijing <- na.omit(beijing)
+beijing['dummy'] = 0
+
+deleted_days = list()
+
+for (d in unique(beijing$date)){
+  if (dim(beijing[which(beijing$date==d),])[1] <24){
+    next_day = format(ymd(d) + days(1), "%Y/%m/%d")
+    beijing$dummy[beijing$date==next_day] = NA
+    deleted_days[length(deleted_days)+1] = d
+  }
+}
+
+# remove data with missing values
+beijing = subset(beijing, !(date %in% deleted_days))
+
+# remove unusual observation at Jan 23 2013
+beijing = subset(beijing, (date != "2012/1/23"))
+
+
+```
+
+```{r}
+dim(beijing)[1]/24
+```
+
+```{r}
+# sampled_days = sample(beijing$date, 1500, replace=FALSE)
+sampled_days = unique(beijing$date)[c(1:1570)]
+other_days = unique(beijing$date)[c(201:length(unique(beijing$date)))]
+beij <- beijing[which(beijing$date %in% sampled_days),]
+
+par(mfrow=c(2,2))
+p <- ggplot(data = beij, aes(x = hour, y = pm2.5, group = date))
+p + geom_line(alpha=0.1)+labs(title="Hourly PM2.5")+theme(plot.title = element_text(hjust = 0.5))+labs(x="Hour",y="PM2.5")
+
+p1 <- ggplot(data = beij, aes(x = hour, y = DEWP, group = date))
+p1 + geom_line(alpha=0.1)+labs(title="Hourly Dew Point")+theme(plot.title = element_text(hjust = 0.5))+labs(x="Hour",y="Dew Point")
+
+p2 <- ggplot(data = beij, aes(x = hour, y = TEMP, group = date))
+p2 + geom_line(alpha=0.1)+labs(title="Hourly Temperature")+theme(plot.title = element_text(hjust = 0.5))+labs(x="Hour",y="Temperature")
+
+# p3 <- ggplot(data = beij, aes(x = hour, y = Iws, group = date))
+# p3 + geom_line(alpha=0.1)
+
+p4 <- ggplot(data = beij, aes(x = hour, y = PRES, group = date))
+p4 + geom_line(alpha=0.1)+labs(title="Hourly Pressure")+theme(plot.title = element_text(hjust = 0.5))+labs(x="Hour",y="Pressure")
+
+```
+```{r}
+beij2 <- beijing[which(beijing$date %in% other_days),]
+
+p <- ggplot(data = beij2, aes(x = hour, y = pm2.5, group = date))
+p + geom_line(alpha=0.1)+labs(title="Hourly PM2.5")+theme(plot.title = element_text(hjust = 0.5))+labs(x="Hour",y="PM2.5")
+
+p1 <- ggplot(data = beij2, aes(x = hour, y = DEWP, group = date))
+p1 + geom_line(alpha=0.1)+labs(title="Hourly Dew Point (Humidity)")+theme(plot.title = element_text(hjust = 0.5))+labs(x="Hour",y="Dew Point")
+
+p2 <- ggplot(data = beij2, aes(x = hour, y = TEMP, group = date))
+p2 + geom_line(alpha=0.1)+labs(title="Hourly Temperature")+theme(plot.title = element_text(hjust = 0.5))+labs(x="Hour",y="Temperature")
+
+# p3 <- ggplot(data = beij2, aes(x = hour, y = Iws, group = date))
+# p3 + geom_line(alpha=0.1)
+
+p4 <- ggplot(data = beij2, aes(x = hour, y = PRES, group = date))
+p4 + geom_line(alpha=0.1)+labs(title="Hourly Pressure")+theme(plot.title = element_text(hjust = 0.5))+labs(x="Hour",y="Pressure")
+
+```
+
+
+```{r}
+get.input <- function(var_name, df=beijing){
+ 
+  Ly<- list()
+  Lt <- list()
+  
+  for(d in unique(df$date)) {
+    sub_df = df[which(df$date == d),]
+    y_vec = as.list(sub_df[var_name])
+    t_vec = list(sub_df$hour)
+    Ly <- append(Ly, y_vec)
+    Lt <- append(Lt, t_vec)
+  }
+  return(list(Ly, Lt))
+}
+
+pm25.bj = get.input('pm2.5')
+Ly.pm25.bj = pm25.bj[[1]]
+Lt.pm25.bj = pm25.bj[[2]]
+
+temp.bj = get.input('TEMP')
+Ly.temp.bj = temp.bj[[1]]
+Lt.temp.bj = temp.bj[[2]]
+
+dp.bj = get.input('DEWP')
+Ly.dp.bj = dp.bj[[1]]
+Lt.dp.bj = dp.bj[[2]]
+
+ws.bj = get.input('Iws')
+Ly.ws.bj = ws.bj[[1]]
+Lt.ws.bj = ws.bj[[2]]
+
+press.bj = get.input('PRES')
+Ly.press.bj = press.bj[[1]]
+Lt.press.bj = press.bj[[2]]
+```
+
+```{r, fig.width=6}
+
+pm25.fpca = FPCA(Ly.pm25.bj, Lt.pm25.bj, list(dataType='Dense', FVEthreshold=0.95, plot=TRUE))
+
+
+grid = pm25.fpca$workGrid
+phi.K = pm25.fpca$phi
+lambda.K = pm25.fpca$lambda
+mu = pm25.fpca$mu
+perc = pm25.fpca$cumFVE
+
+
+# plot(grid, phi.K[,1], type = "l", ylab=expression(phi[k]), xlab="t (Hour)",
+#      main="1st Eigenfunction: PM2.5 (73.31%)", lwd=2, col=2, lty=2)
+# plot(grid, phi.K[,2], lwd=2, col=3, lty=3, xlab="t (Hour)",
+#      main="2nd Eigenfunction: PM2.5 (14.80%)", ylab=expression(phi[2]), type = "l")
+# plot(grid, phi.K[,3], lwd=2, col=4, lty=4, xlab="t (Hour)",
+#      main="3rd Eigenfunction: PM2.5 (5.97%)", ylab=expression(phi[3]), type = "l")
+# plot(grid, phi.K[,4], lwd=2, col=5, lty=5, xlab="t (Hour)",
+#      main="4th Eigenfunction: PM2.5 (2.41%)", ylab=expression(phi[4]), type = "l")
+# legend("bottomright", c(expression(phi[1] ~ "(73.31%)"),expression(phi[2] ~ "(14.80%)"), expression(phi[3] ~ "(5.97%)"), expression(phi[4] ~ "(2.41%)")), col=c(2,3,4,5), lwd=c(2,2,2,2), lty=c(2,3,4,5), cex = 0.7)
+
+
+
+par(mfrow=c(1,2))
+plot(grid, mu, type="l", main="Mean Function: PM2.5", xlab="t (Hour)", ylab = expression("PM2.5 ( mg/" ~ m^3 ~")"), lwd=2)
+plot(smooth.spline(grid[2:length(grid)], diff(mu), spar = 0.55), type="l", main="1st Derivative of Mean Function: PM2.5", xlab="t (Hour)", ylab = "Rate of Change",
+     lwd=2)+ abline(h=0, col=2, lty=2)
+
+
+
+par(mfrow=c(1,2))
+upper = mu+2*sqrt(lambda.K[1])*phi.K[,1]
+lower = mu-2*sqrt(lambda.K[1])*phi.K[,1]
+par(mfrow=c(1,2))
+plot(grid, phi.K[,1], type = "l", ylab=expression(phi[1]), xlab="t (Hour)",
+     main="1st Eigenfunction: PM2.5 (73.31%)", lwd=2, col=2, lty=2, ylim=c(-0.2, 0.6))
+plot(grid, upper, type="l", ylim=c(-300,500), xlim=c(1, 22), main="1st Mode of Variation: PM2.5", xlab="t (Hour)", ylab=expression("PM2.5 ( mg/" ~ m^3 ~")"))
+lines(grid, mu, col=1, lwd=3)
+lines(grid, lower)
+polygon(c(grid, rev(grid)), c(upper, rev(lower)),
+        col = "gray",
+        density = 10, angle = 45)
+legend("bottomright", expression(mu[Y](t)), col=1, lwd=3)
+
+
+
+
+
+upper2 = mu+2*sqrt(lambda.K[2])*phi.K[,2]
+lower2 = mu-2*sqrt(lambda.K[2])*phi.K[,2]
+
+par(mfrow=c(1,2))
+plot(grid, phi.K[,2], lwd=2, col=3, lty=3, xlab="t (Hour)",
+     main="2nd Eigenfunction: PM2.5 (14.80%)", ylab=expression(phi[2]), type = "l", ylim=c(-0.5, 0.5))
+plot(grid, upper2, type="l", ylim=c(-200,400), xlim=c(1, 22), main="2nd Mode of Variation: PM2.5", xlab="t (Hour)", ylab=expression("PM2.5 ( mg/" ~ m^3 ~")"))
+lines(grid, mu, col=1, lwd=3)
+lines(grid, lower2)
+polygon(c(grid, rev(grid)), c(upper2, rev(lower2)),
+        col = "gray",
+        density = 10, angle = 45)
+legend("bottomright", expression(mu[Y](t)), col=1, lwd=3)
+
+
+
+
+
+
+upper3 = mu+2*sqrt(lambda.K[3])*phi.K[,3]
+lower3 = mu-2*sqrt(lambda.K[3])*phi.K[,3]
+
+par(mfrow=c(1,2))
+plot(grid, phi.K[,3], lwd=2, col=4, lty=4, xlab="t (Hour)",
+     main="3rd Eigenfunction: PM2.5 (5.97%)", ylab=expression(phi[3]), type = "l", ylim=c(-0.5, 0.5))
+plot(grid, upper3, type="l", xlim=c(1, 22), ylim=c(-50,250), main="3rd Mode of Variation: PM2.5", xlab="t (Hour)", ylab=expression("PM2.5 ( mg/" ~ m^3 ~")"))
+lines(grid, mu, col=1, lwd=3)
+lines(grid, lower3)
+polygon(c(grid, rev(grid)), c(upper3, rev(lower3)),
+        col = "gray",
+        density = 10, angle = 45)
+legend("bottomright", expression(mu[Y](t)), col=1, lwd=3)
+
+
+par(mfrow=c(1,2))
+upper4 = mu+2*sqrt(lambda.K[4])*phi.K[,4]
+lower4 = mu-2*sqrt(lambda.K[4])*phi.K[,4]
+plot(grid, phi.K[,4], lwd=2, col=5, lty=5, xlab="t (Hour)",
+     main="4th Eigenfunction: PM2.5 (2.41%)", ylab=expression(phi[4]), type = "l", ylim=c(-0.5, 0.5))
+plot(grid, upper4, type="l", xlim=c(1, 22), ylim=c(30, 180), main="4th Mode of Variation: PM2.5", xlab="t (Hour)", ylab=expression("PM2.5 ( mg/" ~ m^3 ~")"))
+lines(grid, mu, col=1, lwd=3)
+lines(grid, lower4)
+polygon(c(grid, rev(grid)), c(upper4, rev(lower4)),
+        col = "gray",
+        density = 10, angle = 45)
+legend("bottomright", expression(mu[Y](t)), col=1, lwd=3)
+
+```
+
+```{r, fig.width=6}
+temp.fpca = FPCA(Ly.temp.bj, Lt.temp.bj, list(dataType='Dense', FVEthreshold=0.95, plot=TRUE))
+
+
+grid = temp.fpca$workGrid
+phi.K = temp.fpca$phi
+lambda.K = temp.fpca$lambda
+mu = temp.fpca$mu
+perc = temp.fpca$cumFVE
+
+par(mfrow=c(1,2))
+plot(grid, mu, type="l", main="Mean Function: Temperature", xlab="t (Hour)", ylab = "Temperature (Celsius degrees)",
+     lwd=2, ylim=c(6,20))
+plot(smooth.spline(grid[2:length(grid)], diff(mu), spar = 0.55), type="l", main="1st Derivative of Mean Function: Temperature", xlab="t (Hour)", ylab = "Rate of Change",
+     lwd=2)+ abline(h=0, col=2, lty=2)
+
+par(mfrow=c(1,2))
+plot(grid, phi.K[,1], type = "l", ylim=c(-0,0.4), ylab=expression(phi[1]), xlab="t (Hour)",
+     main="1st Eigenfunction: Temperature (96.97%)", lwd=2, col=2, lty=2)
+
+upper = mu+2*sqrt(lambda.K[1])*phi.K[,1]
+lower = mu-2*sqrt(lambda.K[1])*phi.K[,1]
+plot(grid, upper, type="l", ylim=c(-30,55), xlim=c(1, 22), main="1st Mode of Variation: Temperature",
+     xlab="t (Hour)", ylab = "Temperature (Celsius degrees)")
+lines(grid, mu, col=1, lwd=3)
+lines(grid, lower)
+polygon(c(grid, rev(grid)), c(upper, rev(lower)),
+        col = "gray",
+        density = 10, angle = 45)
+legend("bottomright", expression(mu[X[1]](t)), col=1, lwd=3)
+
+# upper2 = mu+2*sqrt(lambda.K[2])*phi.K[,2]
+# lower2 = mu-2*sqrt(lambda.K[2])*phi.K[,2]
+# plot(grid, upper2, type="l", ylim=c(-5,30), xlim=c(1, 22), main="2nd Mode of Variation (Temperature)")
+# lines(grid, mu, col=2, lwd=3, lty=2)
+# lines(grid, lower2)
+# polygon(c(grid, rev(grid)), c(upper2, rev(lower2)),
+#         col = "gray",
+#         density = 10, angle = 45)
+
+```
+
+```{r, fig.width=6}
+
+dp.fpca = FPCA(Ly.dp.bj, Lt.dp.bj, list(dataType='Dense', FVEthreshold=0.95, plot=TRUE))
+
+
+grid = dp.fpca$workGrid
+phi.K = dp.fpca$phi
+lambda.K = dp.fpca$lambda
+mu = dp.fpca$mu
+perc = dp.fpca$cumFVE
+
+par(mfrow=c(1,2))
+plot(grid, mu, type="l", main="Mean Function: Dew Point", xlab="t (Hour)", ylab = "Dew Point (Celsius degrees)",
+     lwd=2, ylim=c(-0.5, 3))
+plot(smooth.spline(grid[2:length(grid)], diff(mu), spar = 0.55), type="l", main="1st Derivative of Mean Function: Dew Point", xlab="t (Hour)", ylab = "Dew Point (Celsius degrees)",
+     lwd=2)+ abline(h=0, col=2, lty=2)
+
+
+
+upper = mu+2*sqrt(lambda.K[1])*phi.K[,1]
+lower = mu-2*sqrt(lambda.K[1])*phi.K[,1]
+par(mfrow=c(1,2))
+plot(grid, phi.K[,1], type = "l", ylim=c(0,0.4), ylab=expression(phi[1]), xlab="t (Hour)",
+     main="1st Eigenfunction: Dew Point (96.80%)", lwd=2, col=2, lty=2)
+plot(grid, upper, type="l", ylim=c(-50,50), xlim=c(1, 22), main="1st Mode of Variation: Dew Point",
+     xlab="t (Hour)", ylab="Rate of Change")
+lines(grid, mu, col=1, lwd=3)
+lines(grid, lower)
+polygon(c(grid, rev(grid)), c(upper, rev(lower)),
+        col = "gray",
+        density = 10, angle = 45)
+legend("bottomright", expression(mu[X[2]](t)), col=1, lwd=3)
+
+```
+
+```{r, fig.width=6}
+
+press.fpca = FPCA(Ly.press.bj, Lt.press.bj, list(dataType='Dense', FVEthreshold=0.95, plot=TRUE))
+
+
+grid = press.fpca$workGrid
+phi.K = press.fpca$phi
+lambda.K = press.fpca$lambda
+mu = press.fpca$mu
+perc = press.fpca$cumFVE
+
+par(mfrow=c(1,2))
+plot(grid, mu, type="l", main="Mean Function: Pressure", xlab="t (Hour)", ylab = "Pressure (hPa)",
+     lwd=2)
+plot(smooth.spline(grid[2:length(grid)], diff(mu), spar = 0.55), type="l", main="1st Derivative of Mean Function: Pressure", xlab="t (Hour)", ylab = "Rate of Change ",
+     lwd=2)+ abline(h=0, col=2, lty=2)
+
+
+
+
+
+upper = mu+2*sqrt(lambda.K[1])*phi.K[,1]
+lower = mu-2*sqrt(lambda.K[1])*phi.K[,1]
+par(mfrow=c(1,2))
+plot(grid, phi.K[,1], type = "l", ylim=c(0,0.4), ylab=expression(phi[k]), xlab="t (Hour)",
+     main="1st Eigenfunction: Pressure (97.16%)", lwd=2, col=2, lty=2)
+plot(grid, upper, type="l", ylim=c(980,1050), xlim=c(1, 22), main="1st Mode of Variation: Pressure",
+     xlab="t (Hour)", ylab="Pressure (hPa)")
+lines(grid, mu, col=1, lwd=3)
+lines(grid, lower)
+polygon(c(grid, rev(grid)), c(upper, rev(lower)),
+        col = "gray",
+        density = 10, angle = 45)
+legend("bottomright", expression(mu[X[3]](t)), col=1, lwd=3)
+
+# upper2 = mu+2*sqrt(lambda.K[2])*phi.K[,2]
+# lower2 = mu-2*sqrt(lambda.K[2])*phi.K[,2]
+# plot(grid, upper2, type="l", ylim=c(1005,1030), xlim=c(1, 22), main="2nd Mode of Variation (Pressure)")
+# lines(grid, mu, col=1, lwd=3)
+# lines(grid, lower2)
+# polygon(c(grid, rev(grid)), c(upper2, rev(lower2)),
+#         col = "gray",
+#         density = 10, angle = 45)
+
+```
+
+
+
+# time-shift
+```{r}
+# input list of Y, output list after T shift
+shift.y <- function(col.y, by=1){
+  n = length(col.y)
+  new = rep(NA, n)
+  new[1:(n-by)] = col.y[(by+1):n]
+  return(new)
+}
+
+beijing1 = beijing
+
+beijing1$pm2.5 = shift.y(beijing1$pm2.5, by=3)
+beijing1[25:length(beijing1$date),]
+```
+
+```{r}
+# bandwidth
+f = FPCA(Ly.press.bj, Lt.press.bj, list(dataType='Dense', FVEthreshold=0.95, plot=TRUE, methodMuCovEst="smooth",
+                                        methodBwMu="CV", methodBwCov="CV"))
+f$bwMu
+f$bwCov
+
+f2 = FPCA(Ly.pm25.bj, Lt.pm25.bj, list(dataType='Dense', FVEthreshold=0.95, plot=TRUE, methodMuCovEst="smooth",
+                                        methodBwMu="GCV", methodBwCov="GCV"))
+f2$bwMu
+f2$bwCov
+
+f3 = FPCA(Ly.dp.bj, Lt.dp.bj, list(dataType='Dense', FVEthreshold=0.95, plot=TRUE, methodMuCovEst="smooth",
+                                        methodBwMu="GCV", methodBwCov="GCV"))
+f3$bwMu
+f3$bwCov
+
+f4 = FPCA(Ly.temp.bj, Lt.temp.bj, list(dataType='Dense', FVEthreshold=0.95, plot=TRUE, methodMuCovEst="smooth",
+                                        methodBwMu="GCV", methodBwCov="GCV"))
+f4$bwMu
+f4$bwCov
+
+
+
+```
+
+
+
+# concurrent regression
+
+```{r}
+r = sample(c(1:1571), 1571, replace = FALSE)
+
+Y.bj = list(Ly = Ly.pm25.bj[r], Lt = Lt.pm25.bj[r])
+X.bj = list(
+  list(Ly = Ly.temp.bj, Lt = Lt.temp.bj),
+  list(Ly = Ly.dp.bj, Lt = Lt.dp.bj),
+  list(Ly = Ly.press.bj, Lt = Lt.press.bj)
+  
+)
+vars = list(X1 = list(Ly = Ly.temp.bj[r], Lt = Lt.temp.bj[r]),
+            X2 = list(Ly = Ly.dp.bj[r], Lt = Lt.dp.bj[r]),
+            X3 = list(Ly = Ly.press.bj[r], Lt = Lt.press.bj[r]),
+            Y = Y.bj
+            )
+# bj.concur <- ConcurReg(vars, measurementError=TRUE, outGrid = c(0:23))
+fcr = FCReg(vars=vars, userBwMu = 1.15, userBwCov = 1.15, outGrid = c(0:23))
+
+```
+
+# bootstrap
+```{r}
+B = 999
+N = length(Ly.pm25.bj)
+bs.R2 = matrix(rep(NA, B*24), ncol=24)
+bs.b0 = matrix(rep(NA, B*24), ncol=24)
+bs.temp = matrix(rep(NA, B*24), ncol=24)
+bs.dp = matrix(rep(NA, B*24), ncol=24)
+bs.press = matrix(rep(NA, B*24), ncol=24)
+
+# bootstrap loop
+for (i in c(1:B)){
+  # for each loop, obtain bs sample
+  idx = sample(c(1:N), 500)
+  bs.vars = list(
+    temp = list(Ly = Ly.temp.bj[idx], Lt = Lt.temp.bj[idx]),
+    dp = list(Ly = Ly.dp.bj[idx], Lt = Lt.dp.bj[idx]),
+    press = list(Ly = Ly.press.bj[idx], Lt = Lt.press.bj[idx]),
+    Y = list(Ly = Ly.pm25.bj[idx], Lt = Lt.pm25.bj[idx])
+  )
+  
+  # for each loop, fit a fcr
+  bs.fcr = FCReg(vars=bs.vars, userBwMu = 1.15, userBwCov = 1.15, outGrid = c(0:23))
+  
+  # obtain bs sample estimated coefficients
+  bs.R2[i,] = bs.fcr$R2
+  bs.b0[i,] = bs.fcr$beta0
+  bs.temp[i,] = bs.fcr$beta[1,]
+  bs.dp[i,] = bs.fcr$beta[2,]
+  bs.press[i,] = bs.fcr$beta[3,]
+}
+
+
+```
+
+```{r}
+plot(c(0:23), rep(0,24), ylim = c(0.2,0.4))
+for (i in c(1:100)){
+  lines(c(0:23), bs.R2[i,], type='l', col=i)
+}
+```
+
+```{r}
+plot(c(0:23), rep(0,24), ylim=c(-15,-5))
+for (i in c(1:100)){
+  lines(c(0:23), bs.temp[i,], type='l', col=i)
+}
+```
+
+# point-wise confidence interval
+```{r}
+bs.confint <- function(matrix, alpha=0.05){
+  ci.bounds = list()
+  if (dim(matrix)[2]==24){
+    for (col in c(1:24)){
+      bs.est.vec <- matrix[,col]
+      lower = sort(bs.est.vec)[round((B+1)*alpha/2)]
+      upper = sort(bs.est.vec)[round((B+1)*(1-alpha/2))]
+      point.ci = list(lower=lower, upper=upper)
+      ci.bounds[[length(ci.bounds)+1]] = point.ci
+    }
+    return(ci.bounds)
+  }
+}
+
+
+test = bs.confint(bs.R2)
+test[[1]][1]
+```
+
+# bootstrap CI for R2
+```{r}
+bs.ci.R2 = bs.confint(bs.R2)
+R2.lower = c()
+R2.upper = c()
+
+for (i in c(1:24)){
+  R2.lower[i] = bs.ci.R2[[i]][1]
+  R2.upper[i] = bs.ci.R2[[i]][2]
+}
+par(mar=c(5,5,3,1))
+plot(smooth.spline(c(0:23),fcr$R2, spar=0.4), type="l", lwd=2, ylim=c(0.17,0.4), xlab="t (Hour)", ylab=expression(R^2 ~ "(t)"), main=expression("Concurrent" ~ R^2))
+lines(smooth.spline(c(0:23), R2.lower, spar=0.43), cex=0.8, lty=5)
+lines(smooth.spline(c(0:23), R2.upper, spar=0.43), cex=0.8, lty=5)
+
+```
+
+# bootstrap CI for temperature
+```{r}
+bs.ci.temp = bs.confint(bs.temp)
+temp.lower = c()
+temp.upper = c()
+
+for (i in c(1:24)){
+  temp.lower[i] = bs.ci.temp[[i]][1]
+  temp.upper[i] = bs.ci.temp[[i]][2]
+}
+
+par(mar=c(5,5,3,1))
+plot(smooth.spline(c(0:23),fcr$beta[1,], spar=0.3), type="l", lwd=2, ylim=c(-15, -5), xlab="t (Hour)", ylab=expression(beta[1]), main="Coefficient of Temperature")
+lines(smooth.spline(c(0:23), temp.lower, spar=0.3), cex=0.8, lty=5)
+lines(smooth.spline(c(0:23), temp.upper, spar=0.3), cex=0.8, lty=5)
+```
+
+# bootstrap CI for humidity
+```{r}
+bs.ci.dp = bs.confint(bs.dp)
+dp.lower = c()
+dp.upper = c()
+
+for (i in c(1:24)){
+  dp.lower[i] = bs.ci.dp[[i]][1]
+  dp.upper[i] = bs.ci.dp[[i]][2]
+}
+
+par(mar=c(5,5,3,1))
+plot(smooth.spline(c(0:23),fcr$beta[2,], spar=0.3), type="l", lwd=2, ylim=c(3.5,10.5), xlab="t (Hour)", ylab=expression(beta[2]), main="Coefficient of Dew Point")
+abline(h=0, col=1, lty=3)
+lines(smooth.spline(c(0:23), dp.lower, spar=0.3), cex=0.8, lty=5)
+lines(smooth.spline(c(0:23), dp.upper, spar=0.3), cex=0.8, lty=5)
+```
+
+
+
+# bootstrap CI for pressure
+```{r}
+bs.ci.press = bs.confint(bs.press)
+press.lower = c()
+press.upper = c()
+
+for (i in c(1:24)){
+  press.lower[i] = bs.ci.press[[i]][1]
+  press.upper[i] = bs.ci.press[[i]][2]
+}
+
+par(mar=c(5,5,3,1))
+plot(smooth.spline(c(0:23),fcr$beta[3,], spar=0.4), type="l", lwd=2, ylim=c(-5.5,0), xlab="t (Hour)", ylab=expression(beta[3]), main="Coefficient of Pressure")
+abline(h=0, col=1, lty=3)
+lines(smooth.spline(c(0:23), press.lower, spar=0.4), cex=0.8, lty=2)
+lines(smooth.spline(c(0:23), press.upper, spar=0.4), cex=0.8, lty=2)
+```
+
+
+
+
+
+
+```{r}
+set.seed(2023)
+tuning.idx = sample(c(1:1570), 1000)
+valid.idx = sample(c(1:1570)[-tuning.idx], 200)
+loss.vec = c()
+
+for (tshift in c(0:6)){
+  
+  # data.frame after time shift
+  shifted.df = beijing
+  shifted.df$pm2.5 = shift.y(shifted.df$pm2.5, by=tshift)
+  shifted.df = shifted.df[25:length(shifted.df$date),]
+  shifted.df = na.omit(shifted.df)
+  
+  train.df = shifted.df[tuning.idx,]
+  valid.df = shifted.df[valid.idx,]
+
+  # input of function
+  pm25.bj = get.input('pm2.5', df=train.df)
+  Ly.pm25.bj = pm25.bj[[1]]
+  Lt.pm25.bj = pm25.bj[[2]]
+
+  temp.bj = get.input('TEMP', df=train.df)
+  Ly.temp.bj = temp.bj[[1]]
+  Lt.temp.bj = temp.bj[[2]]
+
+  dp.bj = get.input('DEWP', df=train.df)
+  Ly.dp.bj = dp.bj[[1]]
+  Lt.dp.bj = dp.bj[[2]]
+
+  ws.bj = get.input('Iws', df=train.df)
+  Ly.ws.bj = ws.bj[[1]]
+  Lt.ws.bj = ws.bj[[2]]
+
+  press.bj = get.input('PRES', df=train.df)
+  Ly.press.bj = press.bj[[1]]
+  Lt.press.bj = press.bj[[2]]
+
+
+  # fit concurrent regression
+  vars.tuning = list(
+    temp=list(Ly = Ly.temp.bj, Lt = Lt.temp.bj),
+    dp=list(Ly = Ly.dp.bj, Lt = Lt.dp.bj),
+    press=list(Ly = Ly.press.bj, Lt = Lt.press.bj),
+    Y=list(Ly=Ly.pm25.bj, Lt=Lt.pm25.bj)
+  )
+  mod_i = FCReg(vars=vars.tuning, userBwMu = 1.15, userBwCov = 1.15, outGrid = c(0:23))
+
+  # predict and calculate loss
+  total_loss = 0
+  for (t in c(1:24)){
+    df.t=valid.df[which(valid.df$hour==(t-1)),]
+    beta.t = mod_i$beta[,t]
+    beta0.t = mod_i$beta0[t]
+    temp.t = df.t[, "TEMP"]
+    dp.t = df.t[, "DEWP"]
+    press.t = df.t[,"PRES"]
+    predicted.t = beta0.t + beta.t[1]*temp.t + beta.t[2]*dp.t + beta.t[3]*press.t
+    observed.t = df.t$pm2.5
+    loss.t = sum(abs(predicted.t-observed.t))/dim(df.t)[1]
+    total_loss = total_loss + loss.t
+  }
+  loss.vec[length(loss.vec)+1] = total_loss
+}
+```
+
+```{r}
+plot(c(0:6), loss.vec, type="l", ylab="Mean Absolute Loss", xlab=expression("Lag" ~ (delta)), main="Cross Validation for Lag Parameter")
+points(c(0:6), loss.vec, pch=20)
+```
+
+
+```{r}
+fccor.temp = FCCor(x=Ly.temp.bj, y=Ly.pm25.bj, Lt=Lt.pm25.bj, bw=3)$corr
+fccor.press = FCCor(x=Ly.press.bj, y=Ly.pm25.bj, Lt=Lt.pm25.bj, bw=3)$corr
+fccor.dp = FCCor(x=Ly.dp.bj, y=Ly.pm25.bj, Lt=Lt.pm25.bj, bw=3)$corr
+
+
+plot(c(0:23), abs(fccor.temp), type="l", ylim=c(0,1))
+lines(c(0:23), abs(fccor.press), col=2)
+lines(c(0:23), abs(fccor.dp), col=3)
+
+```
+
+
+```{r}
+# C = GetCovSurface(Ly=Ly.pm25.bj, Lt=Lt.pm25.bj)
+# x = C$workGrid
+# surf = C$cov
+# 
+# plot_ly(x=x, y=x, z=~surf)
+```
+```{r}
+plot(c(0:23), fcr$beta0, type="l")
+```
+
+```{r}
+plot(c(0:23), abs(pm25.fpca$mu - fcr$beta0), type="l")
+plot(c(0:23), pm25.fpca$mu, type="l")
+plot(c(0:23), fcr$beta0, type="l")
+```
+
+
+
+```{r}
+
+
+predicted.curve = function(d1){
+  d1.data = beijing[which(pred.data$date==d1),]
+  d1.pm25 = d1.data$pm2.5
+  d1.dp = d1.data$DEWP
+  d1.temp = d1.data$TEMP
+  d1.press = d1.data$PRES
+  predicted = fcr$beta0 + fcr$beta[1,]*d1.temp + fcr$beta[2,]*d1.dp + fcr$beta[3,]*d1.press
+  return(predicted)
+}
+
+
+
+
+
+plot(smooth.spline(c(0:23), predicted.curve(pred.days[1]), spar=0.4), type="l", ylim=c(0,250))
+lines(smooth.spline(c(0:23), pred.data$pm2.5[which(pred.data$date==pred.days[1])], spar=0.4), col=2)
+
+plot(smooth.spline(c(0:23), predicted.curve(pred.days[2]), spar=0.4), type="l", ylim=c(0,250))
+lines(smooth.spline(c(0:23), pred.data$pm2.5[which(pred.data$date==pred.days[2])], spar=0.4), col=2)
+
+plot(smooth.spline(c(0:23), predicted.curve(pred.days[3]), spar=0.4), type="l", ylim=c(0,250))
+lines(smooth.spline(c(0:23), pred.data$pm2.5[which(pred.data$date==pred.days[3])], spar=0.4), col=2)
+
+plot(smooth.spline(c(0:23), predicted.curve(pred.days[4])), type="l", ylim=c(0,250))
+lines(smooth.spline(c(0:23), pred.data$pm2.5[which(pred.data$date==pred.days[4])]), col=2)
+```
+```{r}
+citation("fdapace")
+```
